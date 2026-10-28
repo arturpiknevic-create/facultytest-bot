@@ -1,6 +1,6 @@
 import os
-from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import telebot
 from telebot import types
 
@@ -11,32 +11,24 @@ TOKEN = "9014457960:AAF8U-6Fw9u-MPHbKS6vK1LTx79AA3HruFE"
 ADMIN_CHAT_ID = 8589473317
 
 bot = telebot.TeleBot(TOKEN)
-
-# Тимчасове сховище для даних, які вводить студент під час подачі звернення
 user_data = {}
 
 # --- Клавіатури ---
-
 def get_main_keyboard():
-    """Створення головного меню з інлайн-кнопками"""
     markup = types.InlineKeyboardMarkup(row_width=1)
-    
     btn_appeal = types.InlineKeyboardButton("📝 Подати звернення / Запитання", callback_data="btn_appeal")
     btn_scholarship = types.InlineKeyboardButton("🎓 Стипендії", callback_data="btn_scholarship")
     btn_leocard = types.InlineKeyboardButton("💳 Питання щодо ЛеоКарт", callback_data="btn_leocard")
     btn_complaint = types.InlineKeyboardButton("⚠️ Скарга на викладача", callback_data="btn_teacher_complaint")
-    
     markup.add(btn_appeal, btn_scholarship, btn_leocard, btn_complaint)
     return markup
 
 def get_back_keyboard():
-    """Кнопка повернення в меню"""
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("⬅️ Головне меню", callback_data="back_to_menu"))
     return markup
 
-# --- Обробники команд ---
-
+# --- Обробники ---
 @bot.message_handler(commands=['start'])
 def start_command(message):
     text = (
@@ -46,8 +38,6 @@ def start_command(message):
         "Обери потрібний розділ нижче:"
     )
     bot.send_message(message.chat.id, text, reply_markup=get_main_keyboard())
-
-# --- Обробник натискань на кнопки ---
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_listener(call):
@@ -60,7 +50,6 @@ def callback_listener(call):
             message_id=call.message.message_id,
             reply_markup=get_main_keyboard()
         )
-
     elif call.data == "btn_scholarship":
         text = (
             "🎓 **Інформація про стипендії**\n\n"
@@ -69,7 +58,6 @@ def callback_listener(call):
             "Якщо є конкретне питання щодо нарахувань — тисни «Подати звернення»."
         )
         bot.edit_message_text(text, chat_id=chat_id, message_id=call.message.message_id, reply_markup=get_back_keyboard(), parse_mode="Markdown")
-
     elif call.data == "btn_leocard":
         text = (
             "💳 **ЛеоКарт для студентів**\n\n"
@@ -77,42 +65,33 @@ def callback_listener(call):
             "Якщо виникають проблеми з виготовленням чи блокуванням — надішли звернення через форму."
         )
         bot.edit_message_text(text, chat_id=chat_id, message_id=call.message.message_id, reply_markup=get_back_keyboard(), parse_mode="Markdown")
-
     elif call.data in ["btn_appeal", "btn_teacher_complaint"]:
         ticket_type = "Звернення / Запитання" if call.data == "btn_appeal" else "Скарга на викладача"
         user_data[chat_id] = {'ticket_type': ticket_type}
-        
         msg = bot.send_message(chat_id, f"📝 Ви обрали: **{ticket_type}**.\n\nВведи своє **ПІБ** (Прізвище, Ім'я, По батькові):", parse_mode="Markdown")
         bot.register_next_step_handler(msg, process_name_step)
-
-# --- Покроковий збір даних (ПІБ -> Група -> Текст) ---
 
 def process_name_step(message):
     chat_id = message.chat.id
     user_data[chat_id]['name'] = message.text
-    
     msg = bot.send_message(chat_id, "Введи свій **курс та групу** (наприклад: ГЛІ-11):", parse_mode="Markdown")
     bot.register_next_step_handler(msg, process_group_step)
 
 def process_group_step(message):
     chat_id = message.chat.id
     user_data[chat_id]['group'] = message.text
-    
     msg = bot.send_message(chat_id, "Опиши детально суть свого запитання або проблеми:")
     bot.register_next_step_handler(msg, process_text_step)
 
 def process_text_step(message):
     chat_id = message.chat.id
     user_info = user_data.get(chat_id, {})
-    
     ticket_type = user_info.get('ticket_type', 'Звернення')
     user_name = user_info.get('name', 'Не вказано')
     user_group = user_info.get('group', 'Не вказано')
     issue_text = message.text
-    
     username_str = f"@{message.from_user.username}" if message.from_user.username else "немає юзернейму"
 
-    # Формуємо красивий текст звернення для адміністратора
     report_text = (
         f"🚨 **НОВЕ ЗВЕРНЕННЯ З БОТА**\n\n"
         f"📌 **Категорія:** {ticket_type}\n"
@@ -122,40 +101,34 @@ def process_text_step(message):
         f"💬 **Текст звернення:**\n{issue_text}"
     )
 
-    # Відправляємо звернення адміну
     try:
         bot.send_message(ADMIN_CHAT_ID, report_text, parse_mode="Markdown")
     except Exception as e:
         print(f"Помилка відправки адміну: {e}")
 
-    # Підтвердження студенту
-    bot.send_message(
-        chat_id, 
-        "✅ Дякуємо! Твоє звернення успішно передано. Очікуй на відповідь!", 
-        reply_markup=get_main_keyboard()
-    )
-    
-    # Очищуємо тимчасові дані
+    bot.send_message(chat_id, "✅ Дякуємо! Твоє звернення успішно передано. Очікуй на відповідь!", reply_markup=get_main_keyboard())
     if chat_id in user_data:
         del user_data[chat_id]
 
-# --- Простий вебсервер для Render (щоб проходив перевірку портів) ---
-class SimpleHandler(BaseHTTPRequestHandler):
+# --- Миттєвий вебсервер для Render ---
+class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Bot is running successfully!")
+        self.wfile.write(b"OK")
+    def log_message(self, format, *args):
+        return # вимикаємо зайвий спам у логах
 
-def run_web_server():
+def run_server():
     port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), SimpleHandler)
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
     server.serve_forever()
 
-# Запуск бота та вебсервера
 if __name__ == '__main__':
-    web_thread = threading.Thread(target=run_web_server)
-    web_thread.daemon = True
-    web_thread.start()
+    # Запускаємо вебсервер у фоновому потоці одразу
+    t = threading.Thread(target=run_server)
+    t.daemon = True
+    t.start()
     
-    print("Бот і вебсервер успішно запущені і чекають на повідомлення...")
+    print("Вебсервер піднято, запускаємо Telegram бота...")
     bot.infinity_polling()
