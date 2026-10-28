@@ -1,3 +1,6 @@
+import os
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
 import telebot
 from telebot import types
 
@@ -136,7 +139,23 @@ def process_text_step(message):
     if chat_id in user_data:
         del user_data[chat_id]
 
-# Запуск бота
+# --- Простий вебсервер для Render (щоб проходив перевірку портів) ---
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running successfully!")
+
+def run_web_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), SimpleHandler)
+    server.serve_forever()
+
+# Запуск бота та вебсервера
 if __name__ == '__main__':
-    print("Бот успішно запущений і чекає на повідомлення...")
+    web_thread = threading.Thread(target=run_web_server)
+    web_thread.daemon = True
+    web_thread.start()
+    
+    print("Бот і вебсервер успішно запущені і чекають на повідомлення...")
     bot.infinity_polling()
